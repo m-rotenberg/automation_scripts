@@ -1,0 +1,241 @@
+name: finance_semantic_model
+description: "Finance semantic model for Snowflake AI analytics. Covers Salesforce
+  CRM pipeline data, NetSuite ERP financials, and Azure cloud cost.\n"
+tables:
+- name: SALESFORCE_OPPORTUNITIES
+  description: 'One row per sales opportunity. Includes deal stage, ARR, forecast
+    category, deal type, and close date. Primary source for pipeline coverage and
+    bookings analysis.
+
+    '
+  base_table:
+    database: FINANCE
+    schema: SALESFORCE
+    table: SALESFORCE_OPPORTUNITIES
+  filters:
+  - name: closed_won
+    description: All closed-won deals. Apply to calculate bookings and won deal counts.
+    expr: stage = 'Closed Won'
+  - name: closed_lost
+    description: All closed-lost deals. Use for win-rate and loss analysis.
+    expr: stage = 'Closed Lost'
+  - name: open_pipeline
+    description: All open pipeline records (not Closed Won or Closed Lost). Use for
+      pipeline coverage analysis.
+    expr: stage NOT IN ('Closed Won', 'Closed Lost')
+  - name: committed_pipeline
+    description: Open pipeline records in Commit forecast category only.
+    expr: stage NOT IN ('Closed Won', 'Closed Lost') AND forecast_category = 'Commit'
+  dimensions:
+  - name: opportunity_id
+    description: Primary key. Salesforce opportunity ID.
+    expr: opportunity_id
+    data_type: TEXT
+    unique: true
+  - name: opportunity_name
+    description: Display name of the opportunity.
+    expr: opportunity_name
+    data_type: TEXT
+  - name: account_id
+    description: FK to the account associated with this opportunity.
+    expr: account_id
+    data_type: TEXT
+  - name: account_name
+    description: Name of the account associated with the opportunity.
+    expr: account_name
+    data_type: TEXT
+  - name: stage
+    description: 'Pipeline stage. Key values: Closed Won, Closed Lost, Commit, Negotiation,
+      Proposal, Discovery.'
+    expr: stage
+    data_type: TEXT
+    sample_values:
+    - Closed Won
+    - Closed Lost
+    - Commit
+    - Negotiation
+    - Proposal
+    - Discovery
+  - name: opportunity_record_type
+    description: 'Salesforce record type. Values: New Business, Renewal, Expansion.'
+    expr: opportunity_record_type
+    data_type: TEXT
+  - name: forecast_category
+    description: 'Forecast confidence level. Values: Commit, Best Case, Pipeline,
+      Omitted.'
+    expr: forecast_category
+    data_type: TEXT
+    sample_values:
+    - Commit
+    - Best Case
+    - Pipeline
+    - Omitted
+  - name: probability
+    description: Close probability 0-100.
+    expr: probability
+    data_type: NUMBER
+  - name: opportunity_owner
+    description: Name of the opportunity owner (AE). Use for rep-level deal attribution.
+    expr: opportunity_owner
+    data_type: TEXT
+  - name: account_type
+    description: Salesforce account type classification (e.g., Customer, Prospect,
+      Partner).
+    expr: account_type
+    data_type: TEXT
+  time_dimensions:
+  - name: close_date
+    description: Expected or actual close date. Use DATE_TRUNC('quarter', close_date)
+      to bucket deals into fiscal periods.
+    expr: close_date
+    data_type: DATE
+  - name: created_date
+    description: Date the opportunity was created in Salesforce.
+    expr: created_date
+    data_type: DATE
+  - name: loaded_at
+    description: Last data refresh timestamp.
+    expr: loaded_at
+    data_type: TIMESTAMP_NTZ
+  measures:
+  - name: deal_count
+    description: Count of distinct pipeline records.
+    expr: opportunity_id
+    data_type: TEXT
+    default_aggregation: count_distinct
+  - name: account_count
+    description: Count of distinct accounts in the filtered set.
+    expr: account_id
+    data_type: TEXT
+    default_aggregation: count_distinct
+  - name: total_arr
+    description: Total Annual Recurring Revenue across opportunities. Apply closed_won
+      filter for booked ARR, or open_pipeline for pipeline ARR.
+    expr: arr
+    data_type: NUMBER
+    default_aggregation: sum
+
+- name: OPERATING_EXPENSES
+  description: 'One row per NetSuite journal line for operating expenses. Use for
+    department-level OpEx reporting by period.
+
+    '
+  base_table:
+    database: FINANCE
+    schema: PRODUCTION
+    table: OPERATING_EXPENSES
+  dimensions:
+  - name: unique_id
+    description: Primary key. Unique identifier for the journal line.
+    expr: unique_id
+    data_type: TEXT
+    unique: true
+  - name: account
+    description: GL account name.
+    expr: account
+    data_type: TEXT
+  - name: department
+    description: Department associated with the expense.
+    expr: department
+    data_type: TEXT
+  - name: type
+    description: Transaction type (e.g., Journal Entry, Bill).
+    expr: type
+    data_type: TEXT
+  - name: employee
+    description: Employee associated with the line item, if applicable.
+    expr: employee
+    data_type: TEXT
+  - name: postingperiod
+    description: Accounting period in Mon YYYY format (e.g., Jan 2025).
+    expr: postingperiod
+    data_type: TEXT
+  time_dimensions:
+  - name: trandate
+    description: Transaction date.
+    expr: trandate
+    data_type: DATE
+  measures:
+  - name: total_amount
+    description: Total expense amount. Positive values are costs.
+    expr: amount
+    data_type: NUMBER
+    default_aggregation: sum
+
+- name: CUSTOMER_REVENUE
+  description: 'One row per NetSuite customer revenue record. Use for recognized
+    revenue reporting by customer and period. Join to SALESFORCE_OPPORTUNITIES via
+    external_id = account_id to correlate revenue with CRM data.
+
+    '
+  base_table:
+    database: FINANCE
+    schema: PRODUCTION
+    table: CUSTOMER_REVENUE
+  dimensions:
+  - name: id
+    description: Primary key. NetSuite internal record ID.
+    expr: id
+    data_type: TEXT
+    unique: true
+  - name: customer_id
+    description: NetSuite customer ID.
+    expr: customer_id
+    data_type: TEXT
+  - name: external_id
+    description: Salesforce account ID (18-character). Use to join to SALESFORCE_OPPORTUNITIES
+      on account_id.
+    expr: external_id
+    data_type: TEXT
+  - name: companyname
+    description: Customer company name.
+    expr: companyname
+    data_type: TEXT
+  measures:
+  - name: total_revenue
+    description: Total recognized revenue for the record.
+    expr: revenue
+    data_type: NUMBER
+    default_aggregation: sum
+
+- name: CLOUD_COST
+  description: 'One row per Azure resource usage line item for the current month.
+    Use for cloud infrastructure cost reporting by source and resource.
+
+    '
+  base_table:
+    database: FINANCE
+    schema: PRODUCTION
+    table: CLOUD_COST
+  dimensions:
+  - name: source
+    description: Azure subscription label (e.g., dev, prod).
+    expr: source
+    data_type: TEXT
+    sample_values:
+    - dev
+    - prod
+  - name: resource_name
+    description: Name of the Azure resource incurring the cost.
+    expr: resource_name
+    data_type: TEXT
+  - name: billing_currency
+    description: Currency of the billed amount.
+    expr: billing_currency
+    data_type: TEXT
+  time_dimensions:
+  - name: date
+    description: Date of the usage.
+    expr: date
+    data_type: DATE
+  measures:
+  - name: total_cost_usd
+    description: Total cost in USD for the resource and period.
+    expr: cost_usd
+    data_type: NUMBER
+    default_aggregation: sum
+  - name: total_quantity
+    description: Total usage quantity for the resource and period.
+    expr: quantity
+    data_type: NUMBER
+    default_aggregation: sum
