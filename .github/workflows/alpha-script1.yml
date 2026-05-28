@@ -1,0 +1,34 @@
+name: run automation
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+  # Uncomment to run daily at 8:00 AM UTC
+  # schedule:
+  #   - cron: "0 8 * * *"
+
+jobs:
+  run-script:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m venv .venv
+          source .venv/bin/activate
+          pip install -r alpha/requirements.txt
+
+      - name: Run script
+        env:
+          ALPHAVANTAGE_API_KEY: ${{ secrets.ALPHAVANTAGE_API_KEY }}
+        run: |
+          source .venv/bin/activate
+          python alpha/stock_price.py
